@@ -1,0 +1,17 @@
+# Strategy configuration template — fill in for your instrument.
+
+symbol:    SYMBOL
+timeframe: D1
+
+backtest:
+  initial_capital: 10000.0
+  point_value:     1.0      # USD per point per lot (check broker spec)
+
+# Add your strategy parameters here.
+# Example structure:
+#
+# my_strategy:
+#   param_a: 200
+#   param_b: 14
+#   long_only: true
+#   sl_pct: 2.0

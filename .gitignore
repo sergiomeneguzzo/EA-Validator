@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+dist/
+build/
+
+# Data (export your own from MT5)
+data/raw/*.csv
+data/raw/*.CSV
+data/processed/*.parquet
+
+# Notebooks output
+notebooks/**/.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Environment
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
