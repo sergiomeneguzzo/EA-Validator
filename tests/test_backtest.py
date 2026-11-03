@@ -2,9 +2,10 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from quant.backtest.engine import run_backtest
-from quant.validation.scorecard import StrategyScorecard, ScorecardConfig
+from quant.validation.scorecard import ScorecardConfig, StrategyScorecard
 
 
 def _sample_df(n: int = 300) -> pd.DataFrame:
@@ -39,16 +40,17 @@ class TestBarCloseEngine:
         assert 0.0 <= m["win_rate"] <= 1.0
 
 
-import pytest
-
-
 class TestScorecard:
-    def test_evaluate_returns_verdict(self):
-        df = _sample_df()
-        sig = _trending_signal(df)
-        result = run_backtest(df, sig)
-        card = StrategyScorecard(config=ScorecardConfig()).evaluate(
-            df=df, signal=sig, backtest_result=result
+    def test_evaluate_returns_a_verdict_for_every_test(self):
+        from quant.strategies import sma_cross
+
+        rng = np.random.default_rng(1)
+        df = _sample_df(600)
+        df["close"] = 100 + np.cumsum(rng.normal(0, 1, len(df)))
+        df["open"], df["high"], df["low"] = df["close"], df["close"] + 0.5, df["close"] - 0.5
+        card = StrategyScorecard(ScorecardConfig(mc_simulations=500)).evaluate(
+            "sma_cross", sma_cross, df, {"fast": 10, "slow": 30}
         )
-        assert card["verdict"] in {"green", "yellow", "red"}
-        assert "scores" in card
+        assert card["overall_status"] in {"green", "yellow", "red"}
+        for test in ("purged_cv", "deflated_sr", "monte_carlo", "robustness", "walk_forward"):
+            assert isinstance(card[test]["pass"], bool)

@@ -1,2 +1,3 @@
-# Implement your strategies here.
-# See configs/strategy_template.yaml for the parameter schema.
+from quant.strategies.sma_cross import sma_cross
+
+__all__ = ["sma_cross"]

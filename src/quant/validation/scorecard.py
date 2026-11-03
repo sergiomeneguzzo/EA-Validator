@@ -3,7 +3,7 @@
 Tests:
   1. purged_cv    : p25 OOS Sharpe > 0.5
   2. deflated_sr  : p_value < 0.05  (after correcting for n_trials)
-  3. monte_carlo  : p_profitable > 0.7  AND  p5_dd < 2× backtest_dd
+  3. monte_carlo  : P(profit) > 0.7 over bootstrapped trade sequences  AND  p95 DD < 2× backtest DD
   4. robustness   : max_sensitivity < 0.50
   5. walk_forward : OOS/IS PF ratio > 0.70
 
@@ -16,6 +16,7 @@ Verdict:
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -60,8 +61,8 @@ class StrategyScorecard:
         """Run all 5 tests. Returns nested dict with per-test results + overall_status."""
         from quant.backtest.engine import run_backtest
         from quant.validation.purged_cv       import cross_val_score_purged
-        from quant.validation.deflated_sharpe import deflated_sharpe, sharpe_from_returns
-        from quant.validation.monte_carlo     import mc_permutation_test
+        from quant.validation.deflated_sharpe import annualise_sharpe, deflated_sharpe, sharpe_from_returns
+        from quant.validation.monte_carlo     import mc_bootstrap_test
         from quant.validation.robustness      import robustness_test
         from quant.validation.walk_forward    import walk_forward_test
 
@@ -109,9 +110,10 @@ class StrategyScorecard:
         # 2. Deflated Sharpe
         try:
             daily_pnl = _trades_to_daily_pnl(base_trades, df_ohlcv.index)
-            sr_hat, skew, exc_kurt, n_obs = sharpe_from_returns(daily_pnl)
-            dsr, p_val = deflated_sharpe(sr_hat, n_trials=_nt, skewness=skew,
-                                          excess_kurtosis=exc_kurt, n_obs=n_obs, sr_std=cfg.deflated_sr_std)
+            sr_daily, skew, exc_kurt, n_obs = sharpe_from_returns(daily_pnl)
+            dsr, p_val = deflated_sharpe(sr_daily, n_trials=_nt, skewness=skew, excess_kurtosis=exc_kurt,
+                                         n_obs=n_obs, sr_std=cfg.deflated_sr_std / math.sqrt(252))
+            sr_hat = annualise_sharpe(sr_daily)
             dsr_pass = not np.isnan(p_val) and p_val < cfg.deflated_sr_p_value
         except Exception as exc:
             log.warning("Deflated SR failed for %s: %s", strategy_name, exc)
@@ -125,8 +127,8 @@ class StrategyScorecard:
         # 3. Monte Carlo
         try:
             r_mults = base_trades["pnl"].dropna().values
-            mc      = mc_permutation_test(r_mults, n_simulations=cfg.mc_simulations)
-            mc_dd_pass = mc.dd_p5 <= cfg.mc_p5_dd_multiplier * mc.dd_p50
+            mc      = mc_bootstrap_test(r_mults, n_simulations=cfg.mc_simulations)
+            mc_dd_pass = mc.dd_p95 <= cfg.mc_p5_dd_multiplier * max(mc.observed_max_dd, 1e-9)
             mc_pass    = mc.p_profitable >= cfg.mc_p_profitable and mc_dd_pass
         except Exception as exc:
             log.warning("Monte Carlo failed for %s: %s", strategy_name, exc)
@@ -191,5 +193,7 @@ def _trades_to_daily_pnl(trades: pd.DataFrame, full_index: pd.DatetimeIndex) -> 
     if trades.empty:
         return pd.Series(dtype=float)
     t = trades.copy()
-    t["date"] = pd.to_datetime(t["entry_time"]).dt.normalize()
-    return t.groupby("date")["pnl"].sum()
+    t["date"] = pd.to_datetime(t["exit_time"]).dt.normalize()
+    daily = t.groupby("date")["pnl"].sum()
+    trading_days = pd.DatetimeIndex(pd.to_datetime(full_index).normalize().unique())
+    return daily.reindex(trading_days.union(daily.index), fill_value=0.0)

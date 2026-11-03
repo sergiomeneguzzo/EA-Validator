@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
-from dataclasses import dataclass
 
 
 @dataclass
@@ -24,12 +25,21 @@ class MCResult:
     all_finals:         np.ndarray
 
 
-def mc_permutation_test(
-    r_multiples: "list[float] | np.ndarray | pd.Series",
+def mc_bootstrap_test(
+    r_multiples: list[float] | np.ndarray | pd.Series,
     n_simulations: int = 10_000,
     rng_seed: int | None = 42,
+    method: str = "bootstrap",
 ) -> MCResult:
-    """Shuffle trade outcomes N times to separate edge from sequencing effect."""
+    """Resample trade outcomes N times.
+
+    method="bootstrap"   draws trades with replacement: final equity, P(profit) and
+                         drawdown all vary, which is what the scorecard needs.
+    method="permutation" only reshuffles the order: final equity is fixed, so use it
+                         to study the drawdown caused by trade sequencing alone.
+    """
+    if method not in ("bootstrap", "permutation"):
+        raise ValueError("method must be 'bootstrap' or 'permutation'")
     r = np.asarray(r_multiples, dtype=float)
     r = r[np.isfinite(r)]
 
@@ -46,8 +56,8 @@ def mc_permutation_test(
     max_dds: np.ndarray = np.empty(n_simulations)
 
     for i in range(n_simulations):
-        perm       = rng.permutation(r)
-        eq         = np.cumsum(perm)
+        sample     = rng.choice(r, size=len(r), replace=True) if method == "bootstrap" else rng.permutation(r)
+        eq         = np.cumsum(sample)
         finals[i]  = eq[-1]
         max_dds[i] = _max_drawdown(eq)
 
@@ -72,8 +82,17 @@ def mc_permutation_test(
     )
 
 
-def plot_mc_distributions(result: MCResult, title: str = "") -> None:
-    """Plot simulated max-DD and final-equity distributions."""
+def mc_permutation_test(
+    r_multiples: list[float] | np.ndarray | pd.Series,
+    n_simulations: int = 10_000,
+    rng_seed: int | None = 42,
+) -> MCResult:
+    """Order-only reshuffle. Kept for drawdown-sequencing studies; see mc_bootstrap_test."""
+    return mc_bootstrap_test(r_multiples, n_simulations, rng_seed, method="permutation")
+
+
+def plot_mc_distributions(result: MCResult, title: str = "", path: str | None = None) -> None:
+    """Plot simulated max-DD and final-equity distributions (saved to `path` if given)."""
     try:
         import matplotlib.pyplot as plt
     except ImportError:
@@ -86,19 +105,74 @@ def plot_mc_distributions(result: MCResult, title: str = "") -> None:
                 label=f"Observed = {result.observed_max_dd:.1f}")
     ax1.axvline(result.dd_p5,  color="#FF7043", linewidth=1, linestyle=":", label=f"p5  = {result.dd_p5:.1f}")
     ax1.axvline(result.dd_p95, color="#FF7043", linewidth=1, linestyle=":", label=f"p95 = {result.dd_p95:.1f}")
-    ax1.set_xlabel("Max Drawdown"); ax1.set_ylabel("Frequency")
-    ax1.set_title("Simulated Max Drawdown Distribution"); ax1.legend(fontsize=8)
+    ax1.set_xlabel("Max Drawdown")
+    ax1.set_ylabel("Frequency")
+    ax1.set_title("Simulated Max Drawdown Distribution")
+    ax1.legend(fontsize=8)
 
     ax2.hist(result.all_finals, bins=60, color="#1E88E5", alpha=0.7, edgecolor="none")
     ax2.axvline(result.observed_final, color="black", linewidth=1.5, linestyle="--",
                 label=f"Observed = {result.observed_final:.1f}")
     ax2.axvline(0, color="red", linewidth=1)
-    ax2.set_xlabel("Final Equity"); ax2.set_ylabel("Frequency")
-    ax2.set_title(f"Final Equity (P(profit)={result.p_profitable:.1%})"); ax2.legend(fontsize=8)
+    ax2.set_xlabel("Final Equity")
+    ax2.set_ylabel("Frequency")
+    ax2.set_title(f"Final Equity (P(profit)={result.p_profitable:.1%})")
+    ax2.legend(fontsize=8)
 
     if title:
         fig.suptitle(title, fontsize=11, fontweight="bold")
-    fig.tight_layout(); plt.show()
+    fig.tight_layout()
+    if path:
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+    else:
+        plt.show()
+
+
+def plot_mc_equity_paths(
+    r_multiples: list[float] | np.ndarray | pd.Series,
+    n_simulations: int = 1_000,
+    rng_seed: int | None = 42,
+    method: str = "bootstrap",
+    title: str = "",
+    path: str | None = None,
+) -> None:
+    """Draw every simulated equity curve, the 5/50/95% bands and the observed curve."""
+    import matplotlib.pyplot as plt
+    from matplotlib.collections import LineCollection
+
+    r = np.asarray(r_multiples, dtype=float)
+    r = r[np.isfinite(r)]
+    rng = np.random.default_rng(rng_seed)
+    draw = (lambda: rng.choice(r, size=len(r), replace=True)) if method == "bootstrap" else (lambda: rng.permutation(r))
+    paths = np.vstack([np.concatenate([[0.0], np.cumsum(draw())]) for _ in range(n_simulations)])
+    x = np.arange(paths.shape[1])
+    observed = np.concatenate([[0.0], np.cumsum(r)])
+    p5, p50, p95 = np.percentile(paths, [5, 50, 95], axis=0)
+    p_profit = float(np.mean(paths[:, -1] > 0))
+
+    fig, ax = plt.subplots(figsize=(12, 5.5))
+    lines = LineCollection([np.column_stack([x, row]) for row in paths], colors="#1E88E5",
+                           linewidths=0.4, alpha=max(0.02, min(0.25, 40 / n_simulations)), rasterized=True)
+    ax.add_collection(lines)
+    ax.fill_between(x, p5, p95, color="#1E88E5", alpha=0.08, label="5–95% of simulations")
+    ax.plot(x, p50, color="#0D47A1", linewidth=1.4, label="Median simulation")
+    ax.plot(x, p5, color="#0D47A1", linewidth=0.8, linestyle=":")
+    ax.plot(x, p95, color="#0D47A1", linewidth=0.8, linestyle=":")
+    ax.plot(x, observed, color="black", linewidth=2.0, label="Observed")
+    ax.axhline(0, color="#E53935", linewidth=1)
+    ax.set_xlim(0, x[-1])
+    ax.set_ylim(paths.min() * 1.05, paths.max() * 1.05)
+    ax.set_xlabel("Trade number")
+    ax.set_ylabel("Cumulative P&L")
+    ax.set_title(title or f"Monte Carlo: {n_simulations:,} simulated equity curves (P(profit) = {p_profit:.1%})")
+    ax.legend(loc="upper left", fontsize=9)
+    fig.tight_layout()
+    if path:
+        fig.savefig(path, dpi=150)
+        plt.close(fig)
+    else:
+        plt.show()
 
 
 def _max_drawdown(equity: np.ndarray) -> float:

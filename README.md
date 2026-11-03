@@ -1,5 +1,7 @@
 # ea-validator
 
+[![tests](https://github.com/sergiomeneguzzo/EA-Validator/actions/workflows/tests.yml/badge.svg)](https://github.com/sergiomeneguzzo/EA-Validator/actions/workflows/tests.yml)
+
 A Python workbench for MetaTrader 5 Expert Advisor developers.
 
 Test your EA logic in Python before going live — backtest, validate, filter by market regime, manage multi-EA risk.
@@ -37,8 +39,8 @@ MT5's tester is great for a final sanity check, but slow for iteration — recom
 ## Setup
 
 ```bash
-git clone https://github.com/yourusername/ea-validator
-cd ea-validator
+git clone https://github.com/sergiomeneguzzo/EA-Validator
+cd EA-Validator
 uv sync          # or: pip install -e .
 ```
 
@@ -105,39 +107,59 @@ from quant.backtest.tick_engine    import TickBacktestEngine    # tick-level
 
 ## Validate your edge
 
-A good-looking backtest is not enough. Run 5 independent checks:
+A good-looking backtest is not enough. Run 5 independent checks (the script uses the bundled
+`sma_cross` example: swap in your own strategy function):
 
 ```bash
-uv run python scripts/run_validation.py --parquet data/processed/SYMBOL_TIMEFRAME.parquet
+uv run python scripts/run_validation.py --parquet data/processed/EURUSD_H1.parquet --fast 20 --slow 50 --trials 10
 ```
 
 ```
 Verdict: GREEN  (4/5 tests passed)
 
-  ✓  Purged Cross-Validation
-  ✓  Deflated Sharpe Ratio
-  ✓  Monte Carlo
-  ✗  Robustness
-  ✓  Walk-Forward
+  ✓  purged_cv
+  ✓  deflated_sr
+  ✓  monte_carlo
+  ✗  robustness
+  ✓  walk_forward
 ```
 
 | Test | What it catches |
 |------|----------------|
 | **Purged CV** | Overfitting from data leakage between folds |
-| **Deflated Sharpe** | Sharpe inflated by running too many parameter trials |
-| **Monte Carlo** | Whether your PF beats 10,000 random shuffles of the same trades |
+| **Deflated Sharpe** | Sharpe inflated by running too many parameter trials (per-period SR, Bailey & López de Prado) |
+| **Monte Carlo** | Bootstrap of your trades: probability of ending in profit and worst-case drawdown |
 | **Robustness** | Parameters that work only at one exact value (±20% sensitivity) |
 | **Walk-Forward** | Performance decay from in-sample to out-of-sample (60/20/20 split) |
 
-Or use the scorecard directly in code:
+Or use the scorecard directly in code. A strategy is any function `(df, params) -> signal`:
 
 ```python
+from quant.strategies import sma_cross
 from quant.validation.scorecard import StrategyScorecard, ScorecardConfig
 
-card = StrategyScorecard(ScorecardConfig()).evaluate(df=df, signal=signal, backtest_result=result)
-print(card["verdict"])  # "green" / "yellow" / "red"
-print(card["scores"])   # {test_name: True/False}
+card = StrategyScorecard(ScorecardConfig()).evaluate(
+    "sma_cross", sma_cross, df, {"fast": 20, "slow": 50}, n_trials=10,
+)
+print(card["overall_status"])          # "green" / "yellow" / "red"
+print(card["monte_carlo"]["p_profitable"], card["deflated_sr"]["p_value"])
 ```
+
+**Monte Carlo on real trades.** 1,702 trades from an MT5 backtest, resampled 10,000 times. The observed result
+looks like a moderate loss, but the bootstrap shows that the strategy ends in profit in only 11.7% of the
+alternative histories, and that a drawdown up to 40% larger than the observed one is entirely plausible.
+
+```python
+from quant.validation import mc_bootstrap_test, plot_mc_distributions, plot_mc_equity_paths
+
+plot_mc_equity_paths(trade_pnl, n_simulations=1_000, path="monte_carlo_paths.png")
+mc = mc_bootstrap_test(trade_pnl, n_simulations=10_000)
+plot_mc_distributions(mc, path="monte_carlo.png")
+```
+
+![Monte Carlo equity paths](exports/monte_carlo_paths.png)
+
+![Monte Carlo distributions](exports/monte_carlo.png)
 
 ![Equity curves](exports/topbottom_equity_curves.png)
 
@@ -267,4 +289,4 @@ uv run pytest tests/ -v
 
 ## License
 
-MIT
+[MIT](LICENSE)

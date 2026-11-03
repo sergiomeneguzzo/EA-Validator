@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-import numpy as np
+import pandas as pd
 from scipy.stats import norm
 
 _EULER_GAMMA = 0.5772156649
@@ -43,20 +43,27 @@ def deflated_sharpe(
     return float(dsr), float(1.0 - dsr)
 
 
-def sharpe_from_returns(returns: "pd.Series") -> tuple[float, float, float, int]:
-    """Compute annualised SR, skewness, excess_kurtosis, n_obs from a return series."""
-    import pandas as pd
+def sharpe_from_returns(returns: pd.Series) -> tuple[float, float, float, int]:
+    """Per-period SR, skewness, excess_kurtosis and n_obs of a return series.
+
+    The SR is NOT annualised: PSR/DSR compare it against n_obs observations of the
+    same frequency. Use annualise_sharpe() only for display.
+    """
     r = pd.Series(returns).dropna()
     n = len(r)
     if n < 4 or r.std(ddof=1) == 0:
         return 0.0, 0.0, 0.0, n
     mu  = float(r.mean())
     sig = float(r.std(ddof=1))
-    sr  = mu / sig * math.sqrt(252)
+    sr  = mu / sig
     z   = (r - mu) / sig
     sk  = float((z ** 3).mean())
     ku  = float((z ** 4).mean()) - 3.0
     return sr, sk, ku, n
+
+
+def annualise_sharpe(sr: float, periods_per_year: int = 252) -> float:
+    return sr * math.sqrt(periods_per_year)
 
 
 def _sr_variance(sr: float, skew: float, exc_kurt: float, n: int) -> float:
