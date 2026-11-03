@@ -1,4 +1,8 @@
-# ea-validator
+<p align="center">
+  <img src="assets/banner.svg" alt="EA Validator" width="100%">
+</p>
+
+# EA Validator
 
 [![tests](https://github.com/sergiomeneguzzo/EA-Validator/actions/workflows/tests.yml/badge.svg)](https://github.com/sergiomeneguzzo/EA-Validator/actions/workflows/tests.yml)
 

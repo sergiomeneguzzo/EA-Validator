@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="280" viewBox="0 0 1280 280">
+  <rect width="1280" height="280" rx="12" fill="#0d1117"/>
+  <g fill="none" stroke="#58a6ff" stroke-width="1.2" stroke-linecap="round" opacity="0.28">
+    <path d="M760 160 C 830 150, 880 120, 950 118 S 1080 92, 1216 70"/>
+    <path d="M760 160 C 830 160, 890 140, 960 142 S 1090 128, 1216 112"/>
+    <path d="M760 160 C 830 168, 900 166, 970 160 S 1100 158, 1216 150"/>
+    <path d="M760 160 C 830 172, 900 186, 970 182 S 1100 196, 1216 196"/>
+    <path d="M760 160 C 830 178, 890 198, 960 206 S 1080 220, 1216 226"/>
+  </g>
+  <path d="M760 160 C 830 155, 885 132, 955 130 S 1085 112, 1216 96"
+        fill="none" stroke="#3fb950" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="1216" cy="96" r="4" fill="#3fb950"/>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+    <text x="72" y="132" fill="#f0f6fc" font-size="52" font-weight="700" letter-spacing="-0.5">EA Validator</text>
+    <text x="74" y="176" fill="#8b949e" font-size="21">Backtest, validate and size MetaTrader 5 Expert Advisors in Python</text>
+  </g>
+</svg>
